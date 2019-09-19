@@ -8,8 +8,7 @@ from abc import abstractmethod
 import json
 import glob
 import time
-from matplotlib.patches import Polygon
-
+from mpl_toolkits.mplot3d import Axes3D
 
 def search_file(directory, extension, recursive=False):
     files = []
@@ -41,8 +40,15 @@ class Dataset(object):
     def load_data(self, dataset_dir):
         pass
 
-
-class Dataset2d(Dataset):
+    def load_image(self, img_no):
+        path = next(iter([x['path'] for x in self.image_info if x['image_no'] == img_no]), None)
+        if path is not None:
+            image = skimage.io.imread(path)
+            # If has an alpha channel, remove it for consistency
+            if image.shape[-1] == 4:
+                image = image[..., :3]
+            return image
+        raise IOError('There is no image file that have img_no {}'.format(img_no, path))
 
     def _load_anno(self, ann_dir):
         _, json_path = search_file(ann_dir, 'json')
@@ -56,10 +62,17 @@ class Dataset2d(Dataset):
         image_info.update(kwargs)
         self.image_info.append(image_info)
 
+    def load_keypoints(self, image_no):
+        return np.array(
+            next(iter([x['keypoints'] for x in self.image_info if x['image_no'] == image_no]), None)).astype(np.int)
+
+
+class Dataset2d(Dataset):
+
     def load_data(self, dataset_dir):
         print('loading data into memory...')
         start_time = time.time()
-        ANN_DIR = os.path.join(dataset_dir, 'annotations/2d')
+        ANN_DIR = os.path.join(dataset_dir, 'annotation/2d')
         IMG_DIR = os.path.join(dataset_dir, 'images')
         self._load_anno(ANN_DIR)
         for dataset in self.dataset_info:
@@ -67,7 +80,7 @@ class Dataset2d(Dataset):
                 source = copy.deepcopy(
                     next(iter([x for x in dataset['annotations'] if x['img_no'] == image['img_no']]), None))
                 source.pop('img_no')
-                self.add_image(source, image['img_no'], os.path.join(IMG_DIR, image['img_path']))
+                self.add_image(source, image['img_no'], IMG_DIR + image['img_path'])
         print('Done (t={}s)'.format(round((time.time() - start_time) / 1000), 2))
         print('Image Count: {}'.format(len(self.image_ids)))
 
@@ -94,28 +107,58 @@ class Dataset2d(Dataset):
         plt.axis('off')
         plt.imshow(image)
 
-    def load_image(self, img_no):
-        path = next(iter([x['path'] for x in self.image_info if x['image_no'] == img_no]), None)
-        if path is not None:
-            image = skimage.io.imread(path)
-            # If has an alpha channel, remove it for consistency
-            if image.shape[-1] == 4:
-                image = image[..., :3]
-            return image
-        raise IOError('There is no image file that have img_no {}'.format(img_no, path))
-
-    def load_keypoints(self, image_no):
-        return np.array(
-            next(iter([x['keypoints'] for x in self.image_info if x['image_no'] == image_no]), None)).astype(np.int)
-
     def load_bbox(self, image_no):
         return np.array(
             next(iter([x['bbox'] for x in self.image_info if x['image_no'] == image_no]), None)).astype(np.int)
 
 
+class Dataset3d(Dataset):
+
+    def load_data(self, dataset_dir):
+        print('loading data into memory...')
+        start_time = time.time()
+        ANN_DIR = os.path.join(dataset_dir, 'annotation/3d')
+        IMG_DIR = os.path.join(dataset_dir, 'images')
+        self._load_anno(ANN_DIR)
+        for dataset in self.dataset_info:
+            for image in dataset['images']:
+                source = copy.deepcopy(
+                    next(iter([x for x in dataset['annotations'] if x['img_no'] == image['img_no']]), None))
+                source.pop('img_no')
+                self.add_image(source, image['img_no'], IMG_DIR + image['img_path'])
+        print('Done (t={}s)'.format(round((time.time() - start_time) / 1000), 2))
+        print('Image Count: {}'.format(len(self.image_ids)))
+
+    def vis_3d_skeleton(self, image_no):
+        kpt_3d = self.load_keypoints(image_no).reshape(-1, 6)
+        kps_lines = [[0, 1], [1, 2], [3, 4], [4, 5], [2, 6], [3, 6], [6, 7], [7, 8], [8, 9], [10, 11], [11, 12],
+                     [13, 14], [14, 15], [12, 8], [13, 8]]
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_autoscale_on(False)
+        ax.set_xlim([-100, 100])
+        ax.set_ylim([-100, 100])
+        ax.set_zlim([0, 200])
+        for l in range(len(kps_lines)):
+            i1 = kps_lines[l][0]
+            i2 = kps_lines[l][1]
+            x = np.array([kpt_3d[i1, 0], kpt_3d[i2, 0]])
+            y = np.array([kpt_3d[i1, 1], kpt_3d[i2, 1]])
+            z = np.array([kpt_3d[i1, 2], kpt_3d[i2, 2]])
+
+            ax.plot(x, z, y)
+            ax.scatter(kpt_3d[i1, 0], kpt_3d[i1, 2], kpt_3d[i1, 1])
+            ax.scatter(kpt_3d[i2, 0], kpt_3d[i2, 2], kpt_3d[i2, 1])
+
+        ax.set_title('3D vis')
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Z Label')
+        ax.set_zlabel('Y Label')
+
+
 if __name__ == '__main__':
     ROOT_DIR = '/Users/kwon/PycharmProjects/SweetDataset'
     DATA_DIR = os.path.join(ROOT_DIR, 'datasets')
-    dataset = Dataset2d()
+    dataset = Dataset3d()
     dataset.load_data(DATA_DIR)
-    dataset.display_instance(dataset.image_ids[0])
+    dataset.vis_3d_skeleton(dataset.image_ids[0])
