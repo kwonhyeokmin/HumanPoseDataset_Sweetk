@@ -7,8 +7,8 @@
 
 $$[그림 1] 사람동작데이터 예시$$
 
-ori | 2D | 3D
-- | - | -
+|ori | 2D | 3D
+| -  | -  |
 ![alt](resource/img003.gif) | ![alt](resource/img004.gif) | ![alt](resource/img005.gif)
 
 * 이미지파일과 json 파일로 제공되는 2차원과 3차원 관절 정보 형식으로 구성
