@@ -10,6 +10,7 @@ import glob
 import time
 from mpl_toolkits.mplot3d import Axes3D
 
+
 def search_file(directory, extension, recursive=False):
     files = []
     paths = []
@@ -35,6 +36,7 @@ class Dataset(object):
         self.image_info = []
         self.keypoint_info = []
         self.image_ids = []
+        self.video_ids = []
 
     @abstractmethod
     def load_data(self, dataset_dir):
@@ -56,9 +58,10 @@ class Dataset(object):
             with open(path, 'r') as f:
                 self.dataset_info.append(json.load(f))
 
-    def add_image(self, source, image_no, path, **kwargs):
+    def _add_image(self, source, image_no, path, video_no, **kwargs):
         self.image_ids.append(image_no)
-        image_info = {'image_no': image_no, 'path': path, **source}
+        self.video_ids.append(video_no)
+        image_info = {'image_no': image_no, 'video_no': video_no, 'path': path, **source}
         image_info.update(kwargs)
         self.image_info.append(image_info)
 
@@ -80,15 +83,16 @@ class Dataset2d(Dataset):
                 source = copy.deepcopy(
                     next(iter([x for x in dataset['annotations'] if x['img_no'] == image['img_no']]), None))
                 source.pop('img_no')
-                self.add_image(source, image['img_no'], IMG_DIR + image['img_path'])
+                self._add_image(source, image['img_no'], IMG_DIR + image['img_path'], image['video_no'])
         print('Done (t={}s)'.format(round((time.time() - start_time) / 1000), 2))
         print('Image Count: {}'.format(len(self.image_ids)))
 
-    def display_instance(self, image_no, show_bbox=False):
+    def display(self, image_no, show_bbox=False, save_image=False):
         try:
             image = self.load_image(image_no)
         except IOError:
             print('No instances to display')
+            return
         keypoints = self.load_keypoints(image_no).reshape(-1, 3)
         color = [116, 193, 0]
         line = [[keypoints[0], keypoints[1]], [keypoints[1], keypoints[2]], [keypoints[3], keypoints[4]],
@@ -103,9 +107,14 @@ class Dataset2d(Dataset):
         if show_bbox:
             bbox = self.load_bbox(image_no).reshape(-1, 2)
             image = cv2.rectangle(image, tuple(bbox[0]), tuple(bbox[1]), color, 3)
+        fig = plt.figure(figsize=(8, 8))
+        plt.axis('off')
         plt.title('image_no: %d' % image_no)
         plt.axis('off')
         plt.imshow(image)
+        if save_image:
+            fig.savefig('vis_{}_2d.png'.format(image_no))
+
 
     def load_bbox(self, image_no):
         return np.array(
@@ -125,15 +134,15 @@ class Dataset3d(Dataset):
                 source = copy.deepcopy(
                     next(iter([x for x in dataset['annotations'] if x['img_no'] == image['img_no']]), None))
                 source.pop('img_no')
-                self.add_image(source, image['img_no'], IMG_DIR + image['img_path'])
+                self._add_image(source, image['img_no'], IMG_DIR + image['img_path'], image['video_no'])
         print('Done (t={}s)'.format(round((time.time() - start_time) / 1000), 2))
         print('Image Count: {}'.format(len(self.image_ids)))
 
-    def vis_3d_skeleton(self, image_no):
+    def display(self, image_no, save_image=False):
         kpt_3d = self.load_keypoints(image_no).reshape(-1, 6)
         kps_lines = [[0, 1], [1, 2], [3, 4], [4, 5], [2, 6], [3, 6], [6, 7], [7, 8], [8, 9], [10, 11], [11, 12],
                      [13, 14], [14, 15], [12, 8], [13, 8]]
-        fig = plt.figure(figsize=(10, 10))
+        fig = plt.figure(figsize=(8, 8))
         ax = fig.add_subplot(111, projection='3d')
         ax.set_autoscale_on(False)
         ax.set_xlim([-100, 100])
@@ -145,20 +154,15 @@ class Dataset3d(Dataset):
             x = np.array([kpt_3d[i1, 0], kpt_3d[i2, 0]])
             y = np.array([kpt_3d[i1, 1], kpt_3d[i2, 1]])
             z = np.array([kpt_3d[i1, 2], kpt_3d[i2, 2]])
-
             ax.plot(x, z, y)
             ax.scatter(kpt_3d[i1, 0], kpt_3d[i1, 2], kpt_3d[i1, 1])
             ax.scatter(kpt_3d[i2, 0], kpt_3d[i2, 2], kpt_3d[i2, 1])
-
-        ax.set_title('3D vis')
+        ax.set_title(image_no)
         ax.set_xlabel('X Label')
         ax.set_ylabel('Z Label')
         ax.set_zlabel('Y Label')
+        if save_image:
+            fig.savefig('vis_{}_3d.png'.format(image_no))
+        else:
+            plt.show(fig)
 
-
-if __name__ == '__main__':
-    ROOT_DIR = '/Users/kwon/PycharmProjects/SweetDataset'
-    DATA_DIR = os.path.join(ROOT_DIR, 'datasets')
-    dataset = Dataset3d()
-    dataset.load_data(DATA_DIR)
-    dataset.vis_3d_skeleton(dataset.image_ids[0])
