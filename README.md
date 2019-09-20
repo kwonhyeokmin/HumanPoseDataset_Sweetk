@@ -1,5 +1,4 @@
 # 사람 동작 영상 AI 데이터 (by Sweetk)
-2D and 3D Human pose dataset
 
 ![title](resource/title.png)
 
